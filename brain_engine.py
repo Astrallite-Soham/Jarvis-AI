@@ -1,6 +1,5 @@
 import os
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_community.llms import OllamaLLM
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 class JarvisBrain:
@@ -9,21 +8,22 @@ class JarvisBrain:
         self._prompt = None
         
     def _init_engine(self):
-        # Check for Streamlit Cloud deployment key
+        # 🔑 Look for the secure cloud secret key
         api_key = os.getenv("GOOGLE_API_KEY")
         
         if api_key:
-            # Cloud Execution Array
+            # 🌐 PRODUCTION MODE: Google Cloud Array execution
             self._llm = ChatGoogleGenerativeAI(
                 model="gemini-1.5-flash", 
                 google_api_key=api_key,
                 temperature=0.3
             )
         else:
-            # Local PC Fallback Execution Layout
-            self._llm = OllamaLLM(model="phi3", temperature=0.3)
+            # 🛑 CRITICAL FALLBACK ALERT
+            # If no API key is found, safely notify the pipeline via text fallback
+            self._llm = None
             
-        # Behavior Profile
+        # ── JARVIS BEHAVIOR DIRECTIVE ──────────────────────────────────────────
         self._prompt = ChatPromptTemplate.from_messages([
             ("system", (
                 "You are J.A.R.V.I.S., Tony Stark's sophisticated, highly advanced artificial intelligence. "
@@ -40,7 +40,7 @@ class JarvisBrain:
             return "No auxiliary data found in local data banks."
         return str(dict_payload)
 
-# Instantiate the global system core
+# Initialize the clean global system core
 _brain_instance = JarvisBrain()
 _brain_instance._init_engine()
 _llm = _brain_instance._llm
@@ -59,6 +59,11 @@ def stream_sentences(user_query: str, dict_data: dict = None):
     """
     global _llm, _prompt, _brain_instance
     
+    # Safety guard if the secret key was skipped or missing entirely
+    if not _llm:
+        yield "Sir, the Google cloud synchronization key is missing. Please check your Streamlit app environment configuration."
+        return
+        
     context_string = _brain_instance._format_dict_data(dict_data)
     
     try:
@@ -71,9 +76,7 @@ def stream_sentences(user_query: str, dict_data: dict = None):
             "human_input": user_query
         })
         
-        # Pull text blocks out of the live stream generation loop
         for chunk in response_stream:
-            # Handle differences between LangChain community structures and Google structures
             text_content = chunk if isinstance(chunk, str) else getattr(chunk, "content", str(chunk))
             if text_content:
                 yield text_content

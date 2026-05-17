@@ -12,7 +12,7 @@ class JarvisBrain:
         # ── SYSTEM INTELLIGENCE CHECK ──────────────────────────────────────────
         # If running on Streamlit Cloud, look for the secure environment secret.
         # Otherwise, look for a local environment variable.
-        api_key = os.getenv("GOOGLE_API_KEY")
+        api_key = os.getenv("AIzaSyALBkd92G2D2ZOj1GpKL09dBeL7xSxR91U")
         
         if api_key:
             # 🌐 PRODUCTION MODE: Run at lightning speed using Google's Cloud Array

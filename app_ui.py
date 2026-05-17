@@ -449,29 +449,21 @@ with col_in:
 with col_mic:
     mic_btn = st.button("🎙", use_container_width=True, key="mic_btn")
 
-# ── Execution logic ──────────────────────────────────────────────────────────
-if sent and word.strip():
+# ── Execution Handlers & Interlocking ─────────────────────────────────────────
+if send and word.strip():
     st.session_state.mic_active = False
     process_pipeline(word)
 
-if mic_btn:
-    st.session_state.mic_active = not st.session_state.mic_active
-    if st.session_state.mic_active:
-        st.session_state.jarvis_state = "processing"
-        st.session_state.chat_history.append(
-            {"role": "system", "text": "Microphone active — listening for 'Jarvis …'"}
-        )
-    else:
-        st.session_state.jarvis_state = "idle"
-    st.rerun()
-
 if st.session_state.mic_active:
-    if audio_engine and hasattr(audio_engine, "listen_for_voice"):
+    if audio_engine and hasattr(audio_engine, 'listen_for_voice'):
         try:
-            voice_cmd = audio_engine.listen_for_voice(timeout=6)
+            # 🌟 FIX: Flip state to active (Gold) right before processing voice string
+            st.session_state.jarvis_state = "active" 
+            voice_command = audio_engine.listen_for_voice(timeout=5)
             st.session_state.mic_active = False
-            if voice_cmd and voice_cmd.strip():
-                process_pipeline(voice_cmd)
+            
+            if voice_command and voice_command.strip():
+                process_pipeline(voice_command)
             else:
                 st.session_state.jarvis_state = "idle"
                 st.rerun()

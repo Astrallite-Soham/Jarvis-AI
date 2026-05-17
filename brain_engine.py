@@ -14,13 +14,12 @@ class JarvisBrain:
         if api_key:
             # 🌐 PRODUCTION MODE: Google Cloud Array execution
             self._llm = ChatGoogleGenerativeAI(
-                model="gemini-1.5-flash", 
+                model="gemini-2.5-flash",  # 🌟 UPGRADED ENGINE
                 google_api_key=api_key,
                 temperature=0.3
             )
         else:
             # 🛑 CRITICAL FALLBACK ALERT
-            # If no API key is found, safely notify the pipeline via text fallback
             self._llm = None
             
         # ── JARVIS BEHAVIOR DIRECTIVE ──────────────────────────────────────────

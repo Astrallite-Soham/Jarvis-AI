@@ -438,7 +438,7 @@ def process_pipeline(user_query: str) -> None:
 st.markdown('<div class="section-label">Console Input Bridge</div>', unsafe_allow_html=True)
 col_input, col_mic = st.columns([0.85, 0.15])
 
-# 🌟 FIX: Initialize default states to completely eliminate NameErrors
+# 🌟 Default fallbacks to prevent NameErrors
 word = ""
 send = False
 
@@ -446,6 +446,18 @@ with col_input:
     with st.form(key="input_form", clear_on_submit=True):
         word = st.text_input("Enter command or text query...", label_visibility="collapsed")
         send = st.form_submit_button("Send Command", use_container_width=True)
+
+# 🎙️ Restoring the missing microphone block inside its layout column
+with col_mic:
+    mic_clicked = st.button("🎙️", use_container_width=True)
+    if mic_clicked:
+        st.session_state.mic_active = not st.session_state.mic_active
+        if st.session_state.mic_active:
+            st.session_state.jarvis_state = "processing"
+            st.session_state.chat_history.append({"role": "system", "text": "microphone active — listening..."})
+        else:
+            st.session_state.jarvis_state = "idle"
+        st.rerun()
 
 # ── Execution Handlers & Interlocking ─────────────────────────────────────────
 if send and word.strip():
@@ -455,7 +467,7 @@ if send and word.strip():
 if st.session_state.mic_active:
     if audio_engine and hasattr(audio_engine, 'listen_for_voice'):
         try:
-            # 🌟 FIX: Flip state to active (Gold) right before processing voice string
+            # 🌟 Core turns Gold immediately when audio engine kicks off
             st.session_state.jarvis_state = "active" 
             voice_command = audio_engine.listen_for_voice(timeout=5)
             st.session_state.mic_active = False
@@ -470,8 +482,14 @@ if st.session_state.mic_active:
             st.session_state.jarvis_state = "idle"
             st.rerun()
     else:
+        # 🌐 CLOUD ENVIRONMENT FALLBACK
+        # If running online where audio_engine is absent, cleanly alert the user
         st.session_state.mic_active = False
         st.session_state.jarvis_state = "idle"
+        st.session_state.chat_history.append({
+            "role": "system", 
+            "text": "Local voice array offline. Native hardware communication links require local execution runtime."
+        })
         st.rerun()
 
 # ── Footer status ─────────────────────────────────────────────────────────────

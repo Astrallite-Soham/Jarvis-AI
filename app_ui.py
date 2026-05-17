@@ -434,20 +434,18 @@ def process_pipeline(user_query: str) -> None:
     st.rerun()
 
 
-# ── Input dock ───────────────────────────────────────────────────────────────
-st.markdown('<div class="jv-label" style="margin-top:12px;">Console input</div>',
-            unsafe_allow_html=True)
+# ── Input Dock ────────────────────────────────────────────────────────────────
+st.markdown('<div class="section-label">Console Input Bridge</div>', unsafe_allow_html=True)
+col_input, col_mic = st.columns([0.85, 0.15])
 
-col_in, col_mic = st.columns([0.84, 0.16])
+# 🌟 FIX: Initialize default states to completely eliminate NameErrors
+word = ""
+send = False
 
-with col_in:
-    with st.form(key="cmd_form", clear_on_submit=True):
-        word = st.text_input("", placeholder="Enter command or query …",
-                             label_visibility="collapsed")
-        sent = st.form_submit_button("TRANSMIT", use_container_width=True)
-
-with col_mic:
-    mic_btn = st.button("🎙", use_container_width=True, key="mic_btn")
+with col_input:
+    with st.form(key="input_form", clear_on_submit=True):
+        word = st.text_input("Enter command or text query...", label_visibility="collapsed")
+        send = st.form_submit_button("Send Command", use_container_width=True)
 
 # ── Execution Handlers & Interlocking ─────────────────────────────────────────
 if send and word.strip():

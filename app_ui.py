@@ -353,16 +353,30 @@ with chat_box:
 
 
 # ── Pipeline ─────────────────────────────────────────────────────────────────
-def process_pipeline(user_query: str) -> None:
-    """
-    Full pipeline:
-      1. Dictionary lookup (fast HTTP)
-      2. Stream LLM sentence-by-sentence
-      3. Speak each sentence the instant it's done — overlapping generation
-    """
-    user_query = user_query.strip()
-    if not user_query:
-        return
+# Insert this check inside your message ingestion handler within app_ui.py
+def process_pipeline_safe(input_payload):
+    if isinstance(input_payload, dict) and 'data' in input_payload:
+        # 🎙️ Extract raw audio byte string from the tactical feed
+        raw_audio = input_payload['data']
+        
+        try:
+            # Route through your speech_recognition module or cloud audio engine
+            text_transcription = audio_engine.process_raw_bytes(raw_audio)
+            
+            if text_transcription:
+                # Format properly for J.A.R.V.I.S. cognitive core
+                sanitized_query = text_transcription
+            else:
+                sanitized_query = "Sir, the audio transmission was completely silent."
+        except Exception as e:
+            st.error(f"Transcription engine failure: {str(e)}")
+            return
+    else:
+        # Standard fallback for pure text inputs
+        sanitized_query = input_payload
+
+    # Safely proceed to stream tokens from the cognitive array
+    process_pipeline(sanitized_query)
 
     # Commit user message
     st.session_state.chat_history.append({"role": "user", "text": user_query})

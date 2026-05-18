@@ -4,6 +4,7 @@ import sys
 import os
 import threading
 import queue as _queue
+from streamlit_mic_recorder import mic_recorder  # 🚀 Browser recorder component
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
@@ -42,6 +43,7 @@ for _k, _v in {
     "mic_active":    False,
     "streaming_text": "",
     "is_streaming":  False,
+    "last_audio_id": None, # Prevents infinite loop re-processing audio
 }.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
@@ -224,26 +226,11 @@ div[data-testid="stVerticalBlockBorderWrapper"] > div {
     text-transform: uppercase;
     margin-top: 2px;
 }
-
-/* Scanning line overlay effect on the chat container */
-.jv-scan::after {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
-    animation: scan 3s linear infinite;
-    pointer-events: none;
-}
-@keyframes scan {
-    from { top: 0; opacity: 0.6; }
-    to   { top: 100%; opacity: 0; }
-}
 </style>
 """, unsafe_allow_html=True)
 
 
-# ── Arc Reactor ──────────────────────────────────────────────────────────────
+# ── Arc Reactor Animation Widget ─────────────────────────────────────────────
 def arc_reactor(state: str) -> None:
     palettes = {
         "idle":       ("#00d4ff", "#004f6e", "18s", "0.8s", "0.85"),
@@ -254,29 +241,12 @@ def arc_reactor(state: str) -> None:
 
     html = f"""
 <div style="display:flex;justify-content:center;align-items:center;height:220px;background:transparent;position:relative;">
-  <!-- outer glow ring -->
-  <div style="position:absolute;width:190px;height:190px;border-radius:50%;
-    box-shadow:0 0 40px {c}22, 0 0 80px {c}11;"></div>
-  <!-- dashed orbit -->
-  <div style="position:absolute;width:170px;height:170px;border:1px dashed {c};
-    border-radius:50%;opacity:0.18;animation:spin {spd} linear infinite;"></div>
-  <!-- outer spinner -->
-  <div style="position:absolute;width:150px;height:150px;
-    border:2px solid transparent;border-top:2px solid {c};border-bottom:2px solid {c};
-    border-radius:50%;animation:spin {spd} linear infinite;"></div>
-  <!-- middle ring -->
-  <div style="position:absolute;width:120px;height:120px;
-    border:1px solid {dim};border-radius:50%;opacity:0.5;
-    animation:spin {spd} linear infinite reverse;"></div>
-  <!-- inner hex marks -->
-  <div style="position:absolute;width:94px;height:94px;
-    border:1px solid {c};border-radius:50%;opacity:0.3;
-    animation:spin 8s linear infinite;"></div>
-  <!-- core -->
-  <div style="width:52px;height:52px;border-radius:50%;
-    background:radial-gradient(circle, #ffffff 0%, {c} 45%, {dim} 100%);
-    box-shadow:0 0 24px {c}, 0 0 48px {c}88;
-    opacity:{op};animation:pulse {pspd} ease-in-out infinite;"></div>
+  <div style="position:absolute;width:190px;height:190px;border-radius:50%;box-shadow:0 0 40px {c}22, 0 0 80px {c}11;"></div>
+  <div style="position:absolute;width:170px;height:170px;border:1px dashed {c};border-radius:50%;opacity:0.18;animation:spin {spd} linear infinite;"></div>
+  <div style="position:absolute;width:150px;height:150px;border:2px solid transparent;border-top:2px solid {c};border-bottom:2px solid {c};border-radius:50%;animation:spin {spd} linear infinite;"></div>
+  <div style="position:absolute;width:120px;height:120px;border:1px solid {dim};border-radius:50%;opacity:0.5;animation:spin {spd} linear infinite reverse;"></div>
+  <div style="position:absolute;width:94px;height:94px;border:1px solid {c};border-radius:50%;opacity:0.3;animation:spin 8s linear infinite;"></div>
+  <div style="width:52px;height:52px;border-radius:50%;background:radial-gradient(circle, #ffffff 0%, {c} 45%, {dim} 100%);box-shadow:0 0 24px {c}, 0 0 48px {c}88;opacity:{op};animation:pulse {pspd} ease-in-out infinite;"></div>
 </div>
 <style>
 @keyframes spin  {{ from{{transform:rotate(0deg)}} to{{transform:rotate(360deg)}} }}
@@ -288,7 +258,7 @@ def arc_reactor(state: str) -> None:
     components.html(html, height=220)
 
 
-# ── Message renderer ─────────────────────────────────────────────────────────
+# ── Message Renderer ─────────────────────────────────────────────────────────
 def _render_msg(msg: dict) -> str:
     role = msg["role"]
     text = msg["text"]
@@ -299,14 +269,100 @@ def _render_msg(msg: dict) -> str:
     return f'<div class="jv-bubble jv-system">⚡ {text}</div>'
 
 
-# ── Layout ───────────────────────────────────────────────────────────────────
+# ── Main Cognitive Core Pipeline ─────────────────────────────────────────────
+def process_pipeline(user_query: str) -> None:
+    user_query = user_query.strip()
+    if not user_query:
+        return
+
+    # Commit user question to display context immediately
+    st.session_state.chat_history.append({"role": "user", "text": user_query})
+    st.session_state.jarvis_state = "processing"
+    st.session_state.is_streaming = True
+    st.session_state.streaming_text = ""
+    
+    # Force state shift render 
+    st.rerun()
+
+# This secondary execution loop catches the state flag to cleanly execute thread streams
+if st.session_state.is_streaming:
+    user_query = st.session_state.chat_history[-1]["text"]
+    
+    # ── Step 1: Dictionary lookup ──────────────────────────────────────────
+    dict_data = None
+    if dictionary_engine and hasattr(dictionary_engine, "lookup"):
+        try:
+            result = dictionary_engine.lookup(user_query)
+            if result and result.get("success"):
+                dict_data = result
+        except Exception:
+            pass
+
+    # ── Step 2 + 3: Stream LLM + sentence TTS in background ─────────────────
+    full_reply = ""
+    tts_q = _queue.Queue()
+
+    def _tts_worker():
+        while True:
+            item = tts_q.get()
+            if item is None:
+                return
+            if audio_engine and hasattr(audio_engine, "speak_text"):
+                try:
+                    audio_engine.speak_text(item)
+                except Exception:
+                    pass
+
+    tts_thread = threading.Thread(target=_tts_worker, daemon=True)
+    tts_thread.start()
+
+    # Capture container elements inside active execution frame
+    st.markdown('<div class="jv-header"><div class="jv-title">J.A.R.V.I.S</div>'
+                '<div class="jv-subtitle">Stark Industries · Cognitive Core v2.0</div></div>', unsafe_allow_html=True)
+    arc_reactor("processing")
+    
+    chat_box = st.container(height=300, border=True)
+    with chat_box:
+        for msg in st.session_state.chat_history:
+            st.markdown(_render_msg(msg), unsafe_allow_html=True)
+        stream_ph = st.empty()
+
+    try:
+        if brain_engine and hasattr(brain_engine, "stream_sentences"):
+            for sentence in brain_engine.stream_sentences(user_query, dict_data):
+                full_reply += (" " if full_reply else "") + sentence
+                st.session_state.streaming_text = full_reply
+                
+                stream_ph.markdown(
+                    f'<div class="jv-bubble jv-jarvis">'
+                    f'<span style="color:#00ffaa;font-size:10px;letter-spacing:2px;">JARVIS ▸ </span>'
+                    f'{full_reply}<span style="opacity:0.4;">▌</span></div>',
+                    unsafe_allow_html=True,
+                )
+                tts_q.put(sentence)
+        else:
+            full_reply = "Sir, the brain_engine module is missing from this workspace."
+    except Exception as e:
+        full_reply = f"Cognitive array fault: {e}"
+
+    tts_q.put(None)
+
+    # ── Commit final reply status updates ──────────────────────────────────
+    full_reply = full_reply.strip() or "..."
+    st.session_state.chat_history.append({"role": "jarvis", "text": full_reply})
+    st.session_state.is_streaming = False
+    st.session_state.streaming_text = ""
+    st.session_state.jarvis_state = "idle"
+    st.rerun()
+
+
+# ── Standard Layout Generation ───────────────────────────────────────────────
 st.markdown('<div class="jv-header"><div class="jv-title">J.A.R.V.I.S</div>'
             '<div class="jv-subtitle">Stark Industries · Cognitive Core v2.0</div></div>',
             unsafe_allow_html=True)
 
 arc_reactor(st.session_state.jarvis_state)
 
-# Status strip
 state_cls = {
     "idle": "jv-dot-idle",
     "processing": "jv-dot-processing",
@@ -326,11 +382,9 @@ st.markdown(
 
 st.markdown('<div class="jv-label">Tactical feed</div>', unsafe_allow_html=True)
 
-# Chat container — fixed height, scrollable
 chat_box = st.container(height=300, border=True)
-
 with chat_box:
-    if not st.session_state.chat_history and not st.session_state.is_streaming:
+    if not st.session_state.chat_history:
         st.markdown(
             '<div style="color:var(--text-dim,#2a5070);text-align:center;'
             'margin-top:110px;font-size:11px;letter-spacing:2px;">'
@@ -340,119 +394,10 @@ with chat_box:
     for msg in st.session_state.chat_history:
         st.markdown(_render_msg(msg), unsafe_allow_html=True)
 
-    # Live streaming placeholder — inside the scrollable container
-    stream_ph = st.empty()
-    if st.session_state.is_streaming and st.session_state.streaming_text:
-        stream_ph.markdown(
-            f'<div class="jv-bubble jv-jarvis">'
-            f'<span style="color:#00ffaa;font-size:10px;letter-spacing:2px;">JARVIS ▸ </span>'
-            f'{st.session_state.streaming_text}'
-            f'<span style="opacity:0.4;animation:blink 0.6s infinite;">▌</span></div>',
-            unsafe_allow_html=True,
-        )
 
-
-# ── Pipeline ─────────────────────────────────────────────────────────────────
-# Insert this check inside your message ingestion handler within app_ui.py
-def process_pipeline_safe(input_payload):
-    if isinstance(input_payload, dict) and 'data' in input_payload:
-        # 🎙️ Extract raw audio byte string from the tactical feed
-        raw_audio = input_payload['data']
-        
-        try:
-            # Route through your speech_recognition module or cloud audio engine
-            text_transcription = audio_engine.process_raw_bytes(raw_audio)
-            
-            if text_transcription:
-                # Format properly for J.A.R.V.I.S. cognitive core
-                sanitized_query = text_transcription
-            else:
-                sanitized_query = "Sir, the audio transmission was completely silent."
-        except Exception as e:
-            st.error(f"Transcription engine failure: {str(e)}")
-            return
-    else:
-        # Standard fallback for pure text inputs
-        sanitized_query = input_payload
-
-    # Safely proceed to stream tokens from the cognitive array
-    process_pipeline(sanitized_query)
-
-    # Commit user message
-    st.session_state.chat_history.append({"role": "user", "text": user_query})
-    st.session_state.jarvis_state = "processing"
-    st.session_state.is_streaming = True
-    st.session_state.streaming_text = ""
-
-    # ── Step 1: Dictionary lookup ──────────────────────────────────────────
-    dict_data = None
-    if dictionary_engine and hasattr(dictionary_engine, "lookup"):
-        try:
-            result = dictionary_engine.lookup(user_query)
-            if result and result.get("success"):
-                dict_data = result
-        except Exception:
-            pass
-
-    # ── Step 2 + 3: Stream LLM + sentence TTS in a background thread ───────
-    full_reply = ""
-    tts_q: _queue.Queue = _queue.Queue()
-
-    def _tts_worker() -> None:
-        """Consumes the TTS queue; runs in a daemon thread."""
-        while True:
-            item = tts_q.get()
-            if item is None:
-                return
-            if audio_engine and hasattr(audio_engine, "speak_text"):
-                try:
-                    audio_engine.speak_text(item)
-                except Exception:
-                    pass
-
-    tts_thread = threading.Thread(target=_tts_worker, daemon=True)
-    tts_thread.start()
-
-    try:
-        if brain_engine and hasattr(brain_engine, "stream_sentences"):
-            for sentence in brain_engine.stream_sentences(user_query, dict_data):
-                full_reply += (" " if full_reply else "") + sentence
-
-                # Update streaming display
-                st.session_state.streaming_text = full_reply
-                stream_ph.markdown(
-                    f'<div class="jv-bubble jv-jarvis">'
-                    f'<span style="color:#00ffaa;font-size:10px;letter-spacing:2px;">JARVIS ▸ </span>'
-                    f'{full_reply}'
-                    f'<span style="opacity:0.4;">▌</span></div>',
-                    unsafe_allow_html=True,
-                )
-
-                # Queue sentence for TTS immediately
-                tts_q.put(sentence)
-        else:
-            full_reply = "Sir, the brain_engine module is missing from this workspace."
-    except Exception as e:
-        full_reply = f"Cognitive array fault: {e}"
-
-    # Signal TTS thread done
-    tts_q.put(None)
-    # Don't join — let audio finish in background while UI updates
-
-    # ── Commit final reply ─────────────────────────────────────────────────
-    full_reply = full_reply.strip() or "..."
-    st.session_state.chat_history.append({"role": "jarvis", "text": full_reply})
-    st.session_state.is_streaming = False
-    st.session_state.streaming_text = ""
-    st.session_state.jarvis_state = "idle"
-    st.rerun()
-
-
-from streamlit_mic_recorder import mic_recorder  # 🚀 Bring in browser recorder
-
-# ── Input Dock ────────────────────────────────────────────────────────────────
+# ── Console Input Bridge UI Dock ─────────────────────────────────────────────
 st.markdown('<div class="section-label">Console Input Bridge</div>', unsafe_allow_html=True)
-col_input, col_mic = st.columns([0.85, 0.15])
+col_input, col_mic = st.columns([0.82, 0.18])
 
 word = ""
 send = False
@@ -463,7 +408,6 @@ with col_input:
         send = st.form_submit_button("Send Command", use_container_width=True)
 
 with col_mic:
-    # 🌟 Browser audio capture button
     audio_data = mic_recorder(
         start_prompt="🎙️",
         stop_prompt="🛑",
@@ -472,37 +416,41 @@ with col_mic:
         key="browser_mic"
     )
 
-# ── Execution Handlers & Interlocking ─────────────────────────────────────────
+# ── Interlocking Handlers ───────────────────────────────────────────────────
 if send and word.strip():
-    st.session_state.mic_active = False
     process_pipeline(word)
 
-# 🌐 Handle Browser Audio Stream Input
+# 🌐 Handle Browser Audio Input cleanly without recursive loop traps
 if audio_data and audio_data.get("bytes"):
-    # Clear out audio data state instantly so it doesn't process on repeat loops
-    raw_audio_bytes = audio_data["bytes"]
-    st.session_state.jarvis_state = "active"
+    audio_id = id(audio_data["bytes"])
     
-    # Send a status notice to the feed
-    st.session_state.chat_history.append({"role": "system", "text": "Audio uplink established — processing transmission..."})
-    
-    # 🌟 To translate audio bytes into text in the cloud, we can pass it to Gemini!
-    try:
-        # We will create a helper function in brain_engine to handle this transcription
-        if brain_engine and hasattr(brain_engine, "transcribe_audio_bytes"):
-            voice_command = brain_engine.transcribe_audio_bytes(raw_audio_bytes)
-            if voice_command and voice_command.strip():
-                process_pipeline(voice_command)
+    # Execute only if this specific audio runtime signature is new
+    if audio_id != st.session_state.last_audio_id:
+        st.session_state.last_audio_id = audio_id
+        raw_audio_bytes = audio_data["bytes"]
+        
+        st.session_state.chat_history.append({"role": "system", "text": "Audio uplink established — processing transmission..."})
+        st.session_state.jarvis_state = "active"
+        
+        try:
+            if brain_engine and hasattr(brain_engine, "transcribe_audio_bytes"):
+                voice_command = brain_engine.transcribe_audio_bytes(raw_audio_bytes)
+                if voice_command and voice_command.strip():
+                    process_pipeline(voice_command)
+                else:
+                    st.session_state.chat_history.append({"role": "system", "text": "Sir, transmission context was unreadable."})
+                    st.session_state.jarvis_state = "idle"
+                    st.rerun()
             else:
+                st.session_state.chat_history.append({"role": "system", "text": "Cloud cognitive transcription matrix missing."})
                 st.session_state.jarvis_state = "idle"
-        else:
-            st.session_state.chat_history.append({"role": "system", "text": "Cloud speech-to-text array unlinked."})
+                st.rerun()
+        except Exception as e:
+            st.session_state.chat_history.append({"role": "system", "text": f"Audio processing fault: {str(e)}"})
             st.session_state.jarvis_state = "idle"
-    except Exception as e:
-        st.session_state.chat_history.append({"role": "system", "text": f"Audio processing error: {str(e)}"})
-        st.session_state.jarvis_state = "idle"
+            st.rerun()
 
-# ── Footer status ─────────────────────────────────────────────────────────────
+# ── Footer Status Strip ──────────────────────────────────────────────────────
 st.markdown(
     '<div style="text-align:center;font-size:9px;letter-spacing:2px;'
     'color:#0d2544;margin-top:16px;">'

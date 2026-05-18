@@ -82,3 +82,28 @@ def stream_sentences(user_query: str, dict_data: dict = None):
                 
     except Exception as e:
         yield f"Sir, an issue occurred within the cognitive relay logic: {str(e)}"
+
+def transcribe_audio_bytes(audio_bytes: bytes) -> str:
+    """
+    Sends raw audio bytes from the user's browser directly to Gemini
+    to turn speech into a text string command.
+    """
+    global _llm
+    if not _llm:
+        return ""
+        
+    try:
+        # Format raw audio structure payload for the Google GenAI payload wrapper
+        audio_payload = {
+            "mime_type": "audio/wav",
+            "data": audio_bytes
+        }
+        
+        # Call Gemini with an explicit translation request directive
+        prompt = "You are a speech-to-text system. Transcribe the audio exactly as spoken, without adding commentary."
+        response = _llm.invoke([prompt, audio_payload])
+        
+        return response.content if hasattr(response, "content") else str(response)
+    except Exception as e:
+        print(f"Transcription failure: {e}")
+        return ""

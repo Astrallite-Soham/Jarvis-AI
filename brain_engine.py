@@ -74,9 +74,7 @@ def stream_sentences(user_query: str, dict_data: dict = None):
         yield f"Sir, an issue occurred within the cognitive relay logic: {str(e)}"
 
 import base64
-from langchain_core.messages import HumanMessage # 🚀 Import LangChain's structural message validator
-
-import base64
+from langchain_core.messages import HumanMessage
 
 def transcribe_audio_bytes(audio_bytes: bytes) -> str:
     """Sends raw audio bytes from browser directly to Gemini for transcription."""
@@ -85,34 +83,35 @@ def transcribe_audio_bytes(audio_bytes: bytes) -> str:
         return "Audio link failure: Engine core uninitialized."
         
     try:
-        # 1. Convert the binary audio arrays into standard base64 string formatting
+        # 1. Convert the binary audio array into a standard base64 string
         b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
         
-        # 2. Construct a native payload structure that mirrors the Gemini API schema directly
-        raw_payload = [
-            {
-                "role": "user",
-                "parts": [
-                    {
-                        "text": (
-                            "You are a highly accurate speech-to-text system. "
-                            "Transcribe the spoken audio stream exactly as stated. "
-                            "Do not add metadata, comments, or summaries. Output the transcription directly."
-                        )
-                    },
-                    {
-                        "inline_data": {
-                            "mime_type": "audio/wav",
-                            "data": b64_audio
-                        }
-                    }
-                ]
-            }
-        ]
+        # 2. Package inside a highly structured, native LangChain human message.
+        # LangChain's implementation allows "image_url" to act as an open binary data URI field 
+        # that handles multimodal streams gracefully when calling Gemini models.
+        message = HumanMessage(
+            content=[
+                {
+                    "type": "text",
+                    "text": (
+                        "You are a highly accurate speech-to-text system. "
+                        "Transcribe the spoken audio stream exactly as stated. "
+                        "Do not add metadata, comments, or summaries. Output the transcription directly."
+                    )
+                },
+                {
+                    "type": "image_url",
+                    "image_url": f"data:audio/wav;base64,{b64_audio}"
+                }
+            ]
+        )
         
-        # 3. Dispatch the message list payload directly to the model's engine core
-        response = _llm.invoke(raw_payload)
+        # 3. Securely dispatch the structured object array to the model core
+        response = _llm.invoke([message])
         return response.content if hasattr(response, "content") else str(response)
+        
+    except Exception as e:
+        return f"Transcription engine failure: {str(e)}"
         
     except Exception as e:
         return f"Transcription engine failure: {str(e)}"

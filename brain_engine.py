@@ -76,6 +76,9 @@ def stream_sentences(user_query: str, dict_data: dict = None):
 import base64
 from langchain_core.messages import HumanMessage # 🚀 Import LangChain's structural message validator
 
+import base64
+from langchain_core.messages import HumanMessage
+
 def transcribe_audio_bytes(audio_bytes: bytes) -> str:
     """Sends raw audio bytes from browser directly to Gemini for transcription."""
     global _llm
@@ -83,24 +86,31 @@ def transcribe_audio_bytes(audio_bytes: bytes) -> str:
         return "Audio link failure: Engine core uninitialized."
         
     try:
-        # LangChain's ChatGoogleGenerativeAI parses multimedia via base64 data URIs
+        # Convert binary audio arrays into standard string encoding
         b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
         
-        # Format the components precisely inside a LangChain structured message frame
+        # Format explicitly using inline data payload structures
         message = HumanMessage(
             content=[
                 {
                     "type": "text",
-                    "text": "You are a highly accurate speech-to-text system. Transcribe the spoken audio stream exactly as stated. Do not add metadata, comments, or summaries. Output the transcription directly."
+                    "text": (
+                        "You are a highly accurate speech-to-text system. "
+                        "Transcribe the spoken audio stream exactly as stated. "
+                        "Do not add metadata, comments, or summaries. Output the transcription directly."
+                    )
                 },
                 {
-                    "type": "media_url",
-                    "media_url": f"data:audio/wav;base64,{b64_audio}"
+                    "type": "inline_data",
+                    "inline_data": {
+                        "mime_type": "audio/wav",
+                        "data": b64_audio
+                    }
                 }
             ]
         )
         
-        # Dispatch the structured message object securely
+        # Dispatch the verified message frame to the cloud
         response = _llm.invoke([message])
         return response.content if hasattr(response, "content") else str(response)
     except Exception as e:

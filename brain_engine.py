@@ -73,6 +73,9 @@ def stream_sentences(user_query: str, dict_data: dict = None):
     except Exception as e:
         yield f"Sir, an issue occurred within the cognitive relay logic: {str(e)}"
 
+import base64
+from langchain_core.messages import HumanMessage # 🚀 Import LangChain's structural message validator
+
 def transcribe_audio_bytes(audio_bytes: bytes) -> str:
     """Sends raw audio bytes from browser directly to Gemini for transcription."""
     global _llm
@@ -82,18 +85,25 @@ def transcribe_audio_bytes(audio_bytes: bytes) -> str:
     try:
         # LangChain's ChatGoogleGenerativeAI parses multimedia via base64 data URIs
         b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
-        audio_content = {
-            "type": "media_url",
-            "media_url": f"data:audio/wav;base64,{b64_audio}"
-        }
         
-        prompt_message = {
-            "type": "text",
-            "text": "You are a highly accurate speech-to-text system. Transcribe the spoken audio stream exactly as stated. Do not add metadata, comments, or summaries. Output the transcription directly."
-        }
+        # Format the components precisely inside a LangChain structured message frame
+        message = HumanMessage(
+            content=[
+                {
+                    "type": "text",
+                    "text": "You are a highly accurate speech-to-text system. Transcribe the spoken audio stream exactly as stated. Do not add metadata, comments, or summaries. Output the transcription directly."
+                },
+                {
+                    "type": "media_url",
+                    "media_url": f"data:audio/wav;base64,{b64_audio}"
+                }
+            ]
+        )
         
-        # Dispatch structured payload message contents
-        response = _llm.invoke([[prompt_message, audio_content]])
+        # Dispatch the structured message object securely
+        response = _llm.invoke([message])
         return response.content if hasattr(response, "content") else str(response)
+    except Exception as e:
+        return f"Transcription engine failure: {str(e)}"
     except Exception as e:
         return f"Transcription engine failure: {str(e)}"

@@ -1,4 +1,5 @@
 import os
+import base64
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -79,16 +80,20 @@ def transcribe_audio_bytes(audio_bytes: bytes) -> str:
         return "Audio link failure: Engine core uninitialized."
         
     try:
-        # Format raw audio structure payload for the Google GenAI wrapper
-        audio_payload = {
-            "mime_type": "audio/wav",
-            "data": audio_bytes
+        # LangChain's ChatGoogleGenerativeAI parses multimedia via base64 data URIs
+        b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
+        audio_content = {
+            "type": "media_url",
+            "media_url": f"data:audio/wav;base64,{b64_audio}"
         }
         
-        # Call Gemini with an explicit transcription instruction
-        prompt = "You are a speech-to-text system. Transcribe the audio exactly as spoken, without adding commentary."
-        response = _llm.invoke([prompt, audio_payload])
+        prompt_message = {
+            "type": "text",
+            "text": "You are a highly accurate speech-to-text system. Transcribe the spoken audio stream exactly as stated. Do not add metadata, comments, or summaries. Output the transcription directly."
+        }
         
+        # Dispatch structured payload message contents
+        response = _llm.invoke([[prompt_message, audio_content]])
         return response.content if hasattr(response, "content") else str(response)
     except Exception as e:
         return f"Transcription engine failure: {str(e)}"

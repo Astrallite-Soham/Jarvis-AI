@@ -77,7 +77,6 @@ import base64
 from langchain_core.messages import HumanMessage # 🚀 Import LangChain's structural message validator
 
 import base64
-from langchain_core.messages import HumanMessage
 
 def transcribe_audio_bytes(audio_bytes: bytes) -> str:
     """Sends raw audio bytes from browser directly to Gemini for transcription."""
@@ -86,34 +85,34 @@ def transcribe_audio_bytes(audio_bytes: bytes) -> str:
         return "Audio link failure: Engine core uninitialized."
         
     try:
-        # Convert binary audio arrays into standard string encoding
+        # 1. Convert the binary audio arrays into standard base64 string formatting
         b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
         
-        # Format explicitly using inline data payload structures
-        message = HumanMessage(
-            content=[
-                {
-                    "type": "text",
-                    "text": (
-                        "You are a highly accurate speech-to-text system. "
-                        "Transcribe the spoken audio stream exactly as stated. "
-                        "Do not add metadata, comments, or summaries. Output the transcription directly."
-                    )
-                },
-                {
-                    "type": "inline_data",
-                    "inline_data": {
-                        "mime_type": "audio/wav",
-                        "data": b64_audio
+        # 2. Construct a native payload structure that mirrors the Gemini API schema directly
+        raw_payload = [
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "text": (
+                            "You are a highly accurate speech-to-text system. "
+                            "Transcribe the spoken audio stream exactly as stated. "
+                            "Do not add metadata, comments, or summaries. Output the transcription directly."
+                        )
+                    },
+                    {
+                        "inline_data": {
+                            "mime_type": "audio/wav",
+                            "data": b64_audio
+                        }
                     }
-                }
-            ]
-        )
+                ]
+            }
+        ]
         
-        # Dispatch the verified message frame to the cloud
-        response = _llm.invoke([message])
+        # 3. Dispatch the message list payload directly to the model's engine core
+        response = _llm.invoke(raw_payload)
         return response.content if hasattr(response, "content") else str(response)
-    except Exception as e:
-        return f"Transcription engine failure: {str(e)}"
+        
     except Exception as e:
         return f"Transcription engine failure: {str(e)}"

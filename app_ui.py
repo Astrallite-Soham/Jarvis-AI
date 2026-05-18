@@ -434,11 +434,12 @@ def process_pipeline(user_query: str) -> None:
     st.rerun()
 
 
+from streamlit_mic_recorder import mic_recorder  # 🚀 Bring in browser recorder
+
 # ── Input Dock ────────────────────────────────────────────────────────────────
 st.markdown('<div class="section-label">Console Input Bridge</div>', unsafe_allow_html=True)
 col_input, col_mic = st.columns([0.85, 0.15])
 
-# 🌟 Default fallbacks to prevent NameErrors
 word = ""
 send = False
 
@@ -447,50 +448,45 @@ with col_input:
         word = st.text_input("Enter command or text query...", label_visibility="collapsed")
         send = st.form_submit_button("Send Command", use_container_width=True)
 
-# 🎙️ Restoring the missing microphone block inside its layout column
 with col_mic:
-    mic_clicked = st.button("🎙️", use_container_width=True)
-    if mic_clicked:
-        st.session_state.mic_active = not st.session_state.mic_active
-        if st.session_state.mic_active:
-            st.session_state.jarvis_state = "processing"
-            st.session_state.chat_history.append({"role": "system", "text": "microphone active — listening..."})
-        else:
-            st.session_state.jarvis_state = "idle"
-        st.rerun()
+    # 🌟 Browser audio capture button
+    audio_data = mic_recorder(
+        start_prompt="🎙️",
+        stop_prompt="🛑",
+        just_once=True,
+        use_container_width=True,
+        key="browser_mic"
+    )
 
 # ── Execution Handlers & Interlocking ─────────────────────────────────────────
 if send and word.strip():
     st.session_state.mic_active = False
     process_pipeline(word)
 
-if st.session_state.mic_active:
-    if audio_engine and hasattr(audio_engine, 'listen_for_voice'):
-        try:
-            # 🌟 Core turns Gold immediately when audio engine kicks off
-            st.session_state.jarvis_state = "active" 
-            voice_command = audio_engine.listen_for_voice(timeout=5)
-            st.session_state.mic_active = False
-            
+# 🌐 Handle Browser Audio Stream Input
+if audio_data and audio_data.get("bytes"):
+    # Clear out audio data state instantly so it doesn't process on repeat loops
+    raw_audio_bytes = audio_data["bytes"]
+    st.session_state.jarvis_state = "active"
+    
+    # Send a status notice to the feed
+    st.session_state.chat_history.append({"role": "system", "text": "Audio uplink established — processing transmission..."})
+    
+    # 🌟 To translate audio bytes into text in the cloud, we can pass it to Gemini!
+    try:
+        # We will create a helper function in brain_engine to handle this transcription
+        if brain_engine and hasattr(brain_engine, "transcribe_audio_bytes"):
+            voice_command = brain_engine.transcribe_audio_bytes(raw_audio_bytes)
             if voice_command and voice_command.strip():
                 process_pipeline(voice_command)
             else:
                 st.session_state.jarvis_state = "idle"
-                st.rerun()
-        except Exception:
-            st.session_state.mic_active = False
+        else:
+            st.session_state.chat_history.append({"role": "system", "text": "Cloud speech-to-text array unlinked."})
             st.session_state.jarvis_state = "idle"
-            st.rerun()
-    else:
-        # 🌐 CLOUD ENVIRONMENT FALLBACK
-        # If running online where audio_engine is absent, cleanly alert the user
-        st.session_state.mic_active = False
+    except Exception as e:
+        st.session_state.chat_history.append({"role": "system", "text": f"Audio processing error: {str(e)}"})
         st.session_state.jarvis_state = "idle"
-        st.session_state.chat_history.append({
-            "role": "system", 
-            "text": "Local voice array offline. Native hardware communication links require local execution runtime."
-        })
-        st.rerun()
 
 # ── Footer status ─────────────────────────────────────────────────────────────
 st.markdown(
